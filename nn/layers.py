@@ -9,9 +9,8 @@ Matrix = Union[np.ndarray, torch.Tensor]
 class SlidingWindow2d:
     def __init__(
         self,
-        size: Union[tuple[int, int], int] = (3, 3),
+        size: Union[tuple[int, int], int] = (1, 1),
         stride: Union[tuple[int, int], int] = 1,
-        # values: Matrix = None,
     ):
         if isinstance(size, int):
             size = (size, size)
@@ -56,7 +55,22 @@ class SlidingWindow2d:
 
 
 class MaxPool2d(SlidingWindow2d):
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        size: Union[tuple[int, int], int] = (1, 1),
+        stride: Union[tuple[int, int], int] = 1,
+        *args,
+        **kwargs
+    ):
+        if isinstance(size, int):
+            size = (size, size)
+        elif isinstance(size, tuple) and len(size) == 1:
+            size = (size[0], size[0])
+        if isinstance(stride, int):
+            stride = (stride, stride)
+        elif isinstance(stride, tuple) and len(size) == 1:
+            size = (stride[0], stride[0])
+        self.size = size
         super().__init__(*args, **kwargs)
 
         def get_max(slice: Matrix) -> Matrix:
@@ -66,13 +80,43 @@ class MaxPool2d(SlidingWindow2d):
 
 
 class AvgPool2d(SlidingWindow2d):
-    def __init__(self, *args, **kwargs):
+    def __init__(
+        self,
+        size: Union[tuple[int, int], int] = (1, 1),
+        stride: Union[tuple[int, int], int] = 1,
+        *args,
+        **kwargs
+    ):
         super().__init__(*args, **kwargs)
+        if isinstance(size, int):
+            size = (size, size)
+        elif isinstance(size, tuple) and len(size) == 1:
+            size = (size[0], size[0])
+        if isinstance(stride, int):
+            stride = (stride, stride)
+        elif isinstance(stride, tuple) and len(size) == 1:
+            size = (stride[0], stride[0])
+        self.size = size
 
-        def get_max(slice: Matrix) -> Matrix:
+        def get_mean(slice: Matrix) -> Matrix:
             return slice.mean()
 
-        self.func = get_max
+        self.func = get_mean
+
+    def __call__(self, mat: Matrix) -> Matrix:
+        if type(mat) not in (np.ndarray, torch.Tensor):
+            raise ValueError("Input should be Matrix type")
+        shape = mat.shape
+        if len(shape) not in (2, 3, 4):
+            raise ValueError("Matrix must be 2d, 3d or 4d")
+        if len(shape) == 3:
+            means = []
+            for channel in mat:
+                means.append(self._slide(channel))
+            return torch.tensor([means])
+        if len(shape) == 2:
+            return self._slide(mat)
+        return torch.tensor([])
 
 
 class GlobalAvgPool(SlidingWindow2d):
@@ -82,4 +126,13 @@ class GlobalAvgPool(SlidingWindow2d):
     def __call__(self, mat: Matrix) -> Matrix:
         if type(mat) not in (np.ndarray, torch.Tensor):
             raise ValueError("Input should be Matrix type")
-        return mat.mean()
+        if len(mat.shape) not in (2, 3, 4):
+            raise ValueError("Matrix must be 2d, 3d or 4d")
+        if len(mat.shape) == 2:
+            return mat.mean()
+        if len(mat.shape) == 3:
+            means = []
+            for channel in mat:
+                means.append([channel.mean()])
+            return torch.tensor(means)
+        return torch.tensor([])
